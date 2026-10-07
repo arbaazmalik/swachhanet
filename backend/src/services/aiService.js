@@ -6,8 +6,8 @@ const rawAIML = (process.env.AIML_SERVICE_URL || process.env.AI_SERVICE_URL || '
 const AIML_BASE_URL = rawAIML.endsWith('/api/v1') ? rawAIML : `${rawAIML}/api/v1`;
 
 class AIService {
-  async predictWaste(fileBuffer, mimeType, filename, retries = 3) {
-    let delay = 1000;
+  async predictWaste(fileBuffer, mimeType, filename, retries = 2) {
+    let delay = 500;
     for (let i = 0; i < retries; i++) {
       try {
         const form = new FormData();
@@ -18,19 +18,33 @@ class AIService {
 
         const response = await axios.post(`${AIML_BASE_URL}/predict-waste`, form, {
           headers: form.getHeaders(),
-          timeout: 60000,
+          timeout: 10000,
         });
 
-        return response.data;
-      } catch (error) {
-        if (i === retries - 1) {
-          logger.error(`Failed to call AIML /predict-waste after ${retries} attempts:`, error.message);
-          throw error;
+        if (response.data && response.data.class) {
+          return response.data;
         }
-        logger.warn(`Retry ${i + 1}/${retries} for /predict-waste in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2;
+      } catch (error) {
+        logger.warn(`AIML /predict-waste attempt ${i + 1} failed: ${error.message}`);
+        if (i < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
       }
+    }
+
+    // No fake classification fallback - strictly throw so callers handle degraded / pending state properly
+    const err = new Error('Waste classification service is temporarily unavailable.');
+    err.code = 'AI_SERVICE_UNAVAILABLE';
+    logger.error('AIML service unreachable after retries. Classification failed.');
+    throw err;
+  }
+
+  async checkReadiness() {
+    try {
+      const response = await axios.get(`${AIML_BASE_URL}/ready`, { timeout: 3000 });
+      return response.data;
+    } catch (error) {
+      return { ready: false, error: error.message };
     }
   }
 

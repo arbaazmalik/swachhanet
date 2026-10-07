@@ -14,6 +14,7 @@ const NAV = [
 ]
 
 const BOTTOM_NAV = [
+  { href: '/citizen/dashboard', label: 'Citizen View', icon: '👤' },
   { href: '/authority/settings', label: 'Settings', icon: '⚙️' },
 ]
 

@@ -94,12 +94,13 @@ export default function AuthorityComplaints() {
   const demoWorkerMut = useMutation({
     mutationFn: () => workersAPI.createDemo(),
     onSuccess: resp => {
-      const demoWorker = resp?.data?.worker
+      const demoWorker = resp?.data?.worker || (resp?.data?.workers && resp.data.workers[0])
       if (demoWorker?._id) {
         setWorkerId(demoWorker._id)
-        toast.success('Demo worker is ready')
+        toast.success(`Demo workers ready! Selected ${demoWorker.name}`)
       }
       qc.invalidateQueries(['workers', user?.wardId])
+      qc.invalidateQueries(['all-workers-v2', user?.wardId])
     },
     onError: () => toast.error('Failed to create demo worker'),
   })
@@ -325,23 +326,31 @@ export default function AuthorityComplaints() {
               <div className="text-slate-500 text-xs mt-1">{assignModal.address}</div>
             </div>
             <div>
-              <label className="label">Select Worker</label>
-              <button
-                type="button"
-                onClick={() => demoWorkerMut.mutate()}
-                disabled={demoWorkerMut.isPending}
-                className="mb-2 text-xs text-blue-600 hover:underline"
-              >
-                {demoWorkerMut.isPending ? 'Preparing demo worker...' : 'Use demo worker'}
-              </button>
-              <select className="select" value={workerId} onChange={e => setWorkerId(e.target.value)}>
-                <option value="">Choose available worker...</option>
-                {(workersData?.workers || []).filter(w => w.status === 'available').map(w => (
+              <div className="flex items-center justify-between mb-1">
+                <label className="label mb-0">Select Worker</label>
+                <button
+                  type="button"
+                  onClick={() => demoWorkerMut.mutate()}
+                  disabled={demoWorkerMut.isPending}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100 transition-all flex items-center gap-1"
+                >
+                  <span>➕</span> {demoWorkerMut.isPending ? 'Adding Demo Workers...' : 'Add Demo Workers'}
+                </button>
+              </div>
+
+              <select className="select w-full mt-1" value={workerId} onChange={e => setWorkerId(e.target.value)}>
+                <option value="">Choose worker to assign...</option>
+                {(workersData?.workers || []).map(w => (
                   <option key={w._id} value={w._id}>
-                    {w.name} — {w.zone}
+                    {w.name} ({w.zone || 'Zone A'}) — {w.status === 'available' ? '✅ Available' : `● ${w.status}`}
                   </option>
                 ))}
               </select>
+              {(!workersData?.workers || workersData.workers.length === 0) && (
+                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                  <span>⚠️</span> No workers in list. Click <strong>Add Demo Workers</strong> above!
+                </p>
+              )}
             </div>
             <div>
               <label className="label">Notes (optional)</label>

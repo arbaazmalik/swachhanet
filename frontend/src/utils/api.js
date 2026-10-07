@@ -109,9 +109,7 @@ export const authAPI = {
 
 // ── Complaints ───────────────────────────────────────────────────────────────
 export const complaintsAPI = {
-  submit: (formData) => api.post('/complaints', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }),
+  submit: (formData) => api.post('/complaints', formData),
   list: (params) => api.get('/complaints', { params }),
   get: (id) => api.get(`/complaints/${id}`),
   updateStatus: (id, status, note) =>
@@ -123,16 +121,13 @@ export const complaintsAPI = {
 
 // ── AI ───────────────────────────────────────────────────────────────────────
 export const aiAPI = {
-  classify: (formData) => api.post('/ai/classify', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }),
+  classify: (formData) => api.post('/ai/classify', formData),
+  status: () => api.get('/ai/status'),
   hotspots: (params) => api.get('/ai/hotspots', { params }),
   refreshHotspots: (wardId, days = 7) => api.post('/ai/hotspots/refresh', { ward_id: wardId, days }),
   heatmap: (params) => api.get('/ai/heatmap', { params }),
 
-  predictWaste: (formData) => api.post('/ai/predict-waste', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }),
+  predictWaste: (formData) => api.post('/ai/predict-waste', formData),
   detectHotspot: (coordinates) => api.post('/ai/detect-hotspot', { coordinates }),
   predictTrend: (historicalData, forecastDays) => api.post('/ai/predict-trend', { 
     historical_data: historicalData, 
