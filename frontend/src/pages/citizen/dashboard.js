@@ -1,10 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
-import { complaintsAPI, gamificationAPI, notificationsAPI } from '../../utils/api'
+import { complaintsAPI, gamificationAPI, notificationsAPI, learningAPI, userAPI } from '../../utils/api'
 import useAuthStore from '../../context/authStore'
 import CitizenLayout from '../../components/shared/CitizenLayout'
 import { StatCard, SectionCard, Badge, PriorityBadge, PageLoader } from '../../components/ui'
 import { formatDistanceToNow } from 'date-fns'
+
+const CATEGORY_COLORS = {
+  segregation: 'bg-emerald-100 text-emerald-700',
+  recycling:   'bg-blue-100   text-blue-700',
+  recycle:     'bg-blue-100   text-blue-700',
+  composting:  'bg-orange-100 text-orange-700',
+  plastic:     'bg-fuchsia-100 text-fuchsia-700',
+  awareness:   'bg-amber-100  text-amber-700',
+}
 
 const ISSUE_EMOJI = {
   full_dustbin: '🗑️', illegal_dumping: '⚠️', burning_waste: '🔥',
@@ -36,6 +45,18 @@ export default function CitizenDashboard() {
   const { data: notifications } = useQuery({
     queryKey: ['dashboard-notifications'],
     queryFn: () => notificationsAPI.list({ limit: 3 }),
+    select: d => d.data,
+  })
+
+  const { data: learningProgress } = useQuery({
+    queryKey: ['user-progress-dash'],
+    queryFn: () => userAPI.progress(),
+    select: d => d.data,
+  })
+
+  const { data: modulesData } = useQuery({
+    queryKey: ['learning-modules-dash'],
+    queryFn: () => learningAPI.modules(),
     select: d => d.data,
   })
 
@@ -219,6 +240,61 @@ export default function CitizenDashboard() {
           </SectionCard>
         </div>
       </div>
+
+      {/* Learning Modules Section */}
+      <SectionCard
+        title="📚 Learning Modules"
+        subtitle="Complete lessons to earn eco points and badges"
+        action={
+          <Link href="/citizen/learn">
+            <button className="btn-secondary btn-sm">View All →</button>
+          </Link>
+        }
+      >
+        {/* Progress bar */}
+        <div className="px-5 pt-4 pb-2">
+          <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
+            <span className="font-medium text-slate-700">
+              {learningProgress?.completedModules || 0} / {learningProgress?.totalModules || 0} modules completed
+            </span>
+            <span className="font-bold text-green-600">{learningProgress?.completionPercentage || 0}%</span>
+          </div>
+          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-700"
+              style={{ width: `${learningProgress?.completionPercentage || 0}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Module previews */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 pt-3">
+          {(modulesData?.modules || []).slice(0, 3).map(mod => (
+            <Link key={mod.id} href={`/citizen/learn/${mod.id}`}>
+              <div className={`rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md ${
+                mod.completed ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100 hover:border-green-300'
+              }`}>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
+                    CATEGORY_COLORS[mod.category] || 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {(mod.category || 'lesson').replace(/_/g, ' ')}
+                  </span>
+                  {mod.completed && <span className="text-green-500 text-xs">✅</span>}
+                </div>
+                <h4 className="text-sm font-semibold text-slate-800 line-clamp-2 mb-1">{mod.title}</h4>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[10px] text-slate-400">{mod.durationMins || 3} min</span>
+                  <span className="text-[10px] font-bold text-green-600">+{mod.pointsReward || 10} pts</span>
+                </div>
+              </div>
+            </Link>
+          ))}
+          {!(modulesData?.modules?.length) && (
+            <div className="col-span-3 text-center py-6 text-slate-400 text-sm">No modules available yet.</div>
+          )}
+        </div>
+      </SectionCard>
     </div>
   )
 }

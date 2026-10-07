@@ -27,35 +27,50 @@ function deg2rad(deg) {
  * 4. Load (fewer tasks is better)
  */
 async function findBestWorker(complaint) {
-  const [lng, lat] = complaint.location.coordinates;
+  const coords = complaint.location?.coordinates || [73.8567, 18.5204];
+  const lng = coords[0] ?? 73.8567;
+  const lat = coords[1] ?? 18.5204;
   const wardId = complaint.wardId;
 
-  // Find available workers in the same ward
-  const availableWorkers = await Worker.find({
-    wardId,
-    status: 'available',
-    // Skip workers who are already busy (redundant due to status: 'available')
-  }).lean();
+  // 1. Available workers in exact ward (highest preference)
+  let candidatesPool = [];
+  if (wardId) {
+    candidatesPool = await Worker.find({ wardId, status: 'available' }).lean();
+  }
 
-  if (!availableWorkers.length) return null;
+  // 2. If none available in exact ward, check general available workers
+  if (!candidatesPool.length) {
+    candidatesPool = await Worker.find({ status: 'available' }).lean();
+  }
 
-  // Calculate scores for each worker
-  const candidates = availableWorkers.map(worker => {
-    const [wLng, wLat] = worker.currentLocation.coordinates;
-    const distance = calculateDistance(lat, lng, wLat, wLng);
-    
-    // Score formula: (Distance in KM * 10) + (Number of assigned tasks * 5)
-    // Lower score is better
+  // 3. If no worker is available at all, do NOT create fake workers. Return null.
+  if (!candidatesPool.length) {
+    return null;
+  }
+
+  // Calculate transparent proximity and workload scores for eligible candidates
+  const scoredCandidates = candidatesPool.map(worker => {
+    const wCoords = worker.currentLocation?.coordinates || [73.8567, 18.5204];
+    const wLng = wCoords[0] ?? 73.8567;
+    const wLat = wCoords[1] ?? 18.5204;
+    const distanceKm = calculateDistance(lat, lng, wLat, wLng);
     const currentLoad = (worker.assignedTasks || []).length;
-    const score = (distance * 10) + (currentLoad * 5);
-
-    return { ...worker, distance, score };
+    // Lower score is better: distance weighted at 10, current tasks weighted at 5
+    const score = Number(((distanceKm * 10) + (currentLoad * 5)).toFixed(2));
+    const isSameWard = wardId && String(worker.wardId) === String(wardId);
+    return {
+      ...worker,
+      distance: Number(distanceKm.toFixed(2)),
+      distanceKm: Number(distanceKm.toFixed(2)),
+      score,
+      reason: isSameWard
+        ? `Ward-assigned available worker (${distanceKm.toFixed(2)}km away, ${currentLoad} active tasks)`
+        : `Nearest available worker (${distanceKm.toFixed(2)}km away, ${currentLoad} active tasks)`
+    };
   });
 
-  // Sort by score ascending
-  candidates.sort((a, b) => a.score - b.score);
-
-  return candidates[0];
+  scoredCandidates.sort((a, b) => a.score - b.score);
+  return scoredCandidates[0];
 }
 
 module.exports = {

@@ -23,9 +23,13 @@ export default function WorkforcePage() {
     refetchInterval: 15_000, // Faster refresh for real-time tracking
   })
 
-  const statusMut = useMutation({
-    mutationFn: ({ id, status }) => workersAPI.updateStatus(id, status),
-    onSuccess: () => { toast.success('Status updated'); qc.invalidateQueries(['all-workers']) },
+  const demoWorkerMut = useMutation({
+    mutationFn: () => workersAPI.createDemo(),
+    onSuccess: () => {
+      toast.success('3 Demo Workers added and set to Available!')
+      qc.invalidateQueries(['all-workers-v2', user?.wardId])
+    },
+    onError: () => toast.error('Failed to add demo workers'),
   })
 
   const workers   = data?.workers || []
@@ -41,6 +45,13 @@ export default function WorkforcePage() {
             <h1 className="page-title">Workforce Management</h1>
             <p className="page-sub">Monitor and manage waste collection workers</p>
           </div>
+          <button
+            onClick={() => demoWorkerMut.mutate()}
+            disabled={demoWorkerMut.isPending}
+            className="btn-primary flex items-center gap-2"
+          >
+            <span>➕</span> {demoWorkerMut.isPending ? 'Seeding Demo Workers...' : 'Seed Demo Workers'}
+          </button>
         </div>
 
         {/* KPIs */}

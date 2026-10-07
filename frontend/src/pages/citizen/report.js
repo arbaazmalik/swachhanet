@@ -39,12 +39,35 @@ export default function ReportPage() {
     try {
       const fd = new FormData(); fd.append('image', file)
       const response = await aiAPI.classify(fd)
-      const result = response.data?.result
-      if (result) {
-        setAiResult(result)
-        toast.success(`AI: ${result.label} waste detected (${Math.round(result.confidence * 100)}%)`)
+      const result = response.data?.result || response.data?.data?.result || response.data
+      if (result && (result.label || result.class || result.waste_type)) {
+        const detectedLabel = result.label || result.class || result.waste_type
+        const confidence = result.confidence || 0.85
+        const normalized = {
+          label: detectedLabel,
+          confidence,
+          reliable: result.reliable ?? true,
+          all_scores: result.all_scores || result.probabilities || {},
+        }
+        setAiResult(normalized)
+        toast.success(`🤖 AI detected: ${detectedLabel.toUpperCase()} waste (${Math.round(confidence * 100)}%)`)
+
+        // Auto-suggest issue type if not already selected
+        setForm(prev => {
+          if (!prev.issue_type) {
+            let suggestedType = 'illegal_dumping'
+            if (['plastic', 'dry'].includes(detectedLabel.toLowerCase())) suggestedType = 'full_dustbin'
+            if (['wet'].includes(detectedLabel.toLowerCase())) suggestedType = 'overflowing_bin'
+            if (['hazardous'].includes(detectedLabel.toLowerCase())) suggestedType = 'burning_waste'
+            return { ...prev, issue_type: suggestedType }
+          }
+          return prev
+        })
       }
-    } catch { /* optional */ } finally { setClassifying(false) }
+    } catch (err) {
+      console.error('AI Classification failed:', err)
+      toast.error('AI analysis warning: Could not auto-detect category, please select issue type manually.')
+    } finally { setClassifying(false) }
   }
 
   const onDrop = useCallback((files) => {

@@ -33,13 +33,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from services.image_service import image_service
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        logger.info("Initializing AI models at startup...")
+        image_service.is_ready()
+        logger.info("AI model initialization completed.")
+    except Exception as e:
+        logger.warn(f"AI model startup initialization note: {e}")
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to EcoIntellect AI Backend"}
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "service": "aiml"}
+
+@app.get("/ready")
+@app.get("/api/v1/ready")
+async def readiness_check():
+    status = image_service.get_status()
+    return {"status": "ready" if status["ready"] else "degraded", **status}
 
 # We will include routers from api.routes here later
 from api.routes import router as api_router

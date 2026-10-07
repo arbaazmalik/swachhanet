@@ -22,6 +22,8 @@ const complaintSchema = new Schema({
   upvotes:       { type: Number, default: 0 },
   resolvedAt:    { type: Date },
 
+  classificationStatus: { type: String, enum: ['pending', 'processing', 'completed', 'failed'], default: 'pending' },
+
   // Embedded AI result (denormalized for speed)
   aiResult: {
     wasteType:    String,

@@ -44,18 +44,41 @@ class ImageClassificationService:
         return model
 
     def _resolve_model_path(self) -> str | None:
+        env_path = os.getenv('WASTE_MODEL_PATH')
+        if env_path and Path(env_path).exists():
+            return env_path
+
         configured = resolve_from_base(config.get('model_paths', {}).get('waste_classifier'))
         if configured and Path(configured).exists():
             return configured
 
         candidates = [
-            resolve_from_base("models/waste_classifier/model.pth"),
             resolve_from_base("models/waste_classifier/best_model.pth"),
+            resolve_from_base("models/waste_classifier/model.pth"),
         ]
         for candidate in candidates:
             if candidate and Path(candidate).exists():
                 return candidate
         return None
+
+    def is_ready(self) -> bool:
+        if self.model is not None:
+            return True
+        try:
+            self._load_model()
+            return self.model is not None
+        except Exception:
+            return False
+
+    def get_status(self) -> dict:
+        ready = self.is_ready()
+        return {
+            "ready": ready,
+            "classes": self.classes if ready else [],
+            "device": str(self.device),
+            "model_architecture": config.get('classifier', {}).get('model_architecture', 'mobilenet_v2'),
+            "model_version": "swachhanet-ai-v1"
+        }
 
     def _load_model(self):
         if self.model is None:

@@ -51,19 +51,20 @@ function phoneCandidates(phone) {
   return [...out];
 }
 
-const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+const {
+  generateOTP,
+  checkCooldown,
+  recordOtpSent,
+  recordFailedAttempt,
+  clearOtpMeta,
+  sendOtpNotification,
+  OTP_EXPIRY_MS,
+} = require('../services/otpService');
+
 const shouldExposeOTP = () => process.env.NODE_ENV !== 'production';
 
 function buildOtpPayload(otp) {
   return shouldExposeOTP() ? { otp } : {};
-}
-
-async function sendOTP(phone, otp) {
-  // Terminal-only OTP delivery for local/dev use.
-  // No SMS/email provider call is made here.
-  const line = `[OTP-TERMINAL] phone=${phone} otp=${otp}`;
-  console.log(line);
-  logger.info(line);
 }
 
 // POST /auth/register
@@ -79,7 +80,12 @@ router.post('/register', [
     const { name, phone, email, password, role = 'citizen' } = req.body;
     const normalizedPhone = normalizePhone(phone);
     const candidates = phoneCandidates(phone);
-    logger.info(`[REGISTER DEBUG] phone=${phone} normalized=${normalizedPhone} candidates=${JSON.stringify(candidates)}`);
+    
+    const cooldown = checkCooldown(normalizedPhone);
+    if (!cooldown.allowed) {
+      return fail(res, 429, cooldown.error);
+    }
+
     const exists = await User.findOne({
       $or: [
         { phone: { $in: candidates } },
@@ -87,7 +93,6 @@ router.post('/register', [
       ],
     });
     if (exists) {
-      logger.info(`[REGISTER DEBUG] Duplicate found: existing phone=${exists.phone} email=${exists.email}`);
       return fail(res, 409, 'User with this phone/email already exists');
     }
 
@@ -98,10 +103,14 @@ router.post('/register', [
       phone: normalizedPhone,
       email: email || undefined,
       passwordHash,
-      role, otpSecret: otp, otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      role,
+      otpSecret: otp,
+      otpExpiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
     });
     await Gamification.create({ userId: user._id });
-    await sendOTP(normalizedPhone, otp);
+    
+    recordOtpSent(normalizedPhone);
+    await sendOtpNotification(normalizedPhone, otp);
 
     return ok(
       res,
@@ -122,13 +131,22 @@ router.post('/otp/send', async (req, res, next) => {
     if (!phone) return fail(res, 400, 'Phone required');
     const normalizedPhone = normalizePhone(phone);
     if (!normalizedPhone) return fail(res, 400, 'Invalid phone number');
+
+    const cooldown = checkCooldown(normalizedPhone);
+    if (!cooldown.allowed) {
+      return fail(res, 429, cooldown.error);
+    }
+
     const otp = generateOTP();
     const user = await User.findOneAndUpdate(
       { phone: { $in: phoneCandidates(phone) } },
-      { phone: normalizedPhone, otpSecret: otp, otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000) }
+      { phone: normalizedPhone, otpSecret: otp, otpExpiresAt: new Date(Date.now() + OTP_EXPIRY_MS) }
     );
     if (!user) return fail(res, 404, 'User not found');
-    await sendOTP(normalizedPhone, otp);
+
+    recordOtpSent(normalizedPhone);
+    await sendOtpNotification(normalizedPhone, otp);
+
     return ok(res, { phone: normalizedPhone, ...buildOtpPayload(otp) }, 'OTP sent successfully');
   } catch (err) { next(err); }
 });
@@ -138,14 +156,28 @@ router.post('/otp/verify', async (req, res, next) => {
   try {
     const { phone, otp } = req.body;
     if (!phone || !otp) return fail(res, 400, 'Phone and OTP required');
+    const normalizedPhone = normalizePhone(phone) || phone;
     const user = await User.findOne({ phone: { $in: phoneCandidates(phone) } });
     if (!user) return fail(res, 404, 'User not found');
+
     if (user.otpSecret !== otp || new Date(user.otpExpiresAt) < new Date()) {
-      return fail(res, 400, 'Invalid or expired OTP');
+      const attempts = recordFailedAttempt(normalizedPhone);
+      if (attempts >= 5) {
+        // invalidate OTP on max failures
+        user.otpSecret = undefined;
+        user.otpExpiresAt = undefined;
+        await user.save();
+        return fail(res, 429, 'Too many failed verification attempts. Please request a new OTP.');
+      }
+      return fail(res, 400, `Invalid or expired OTP. ${5 - attempts} attempts remaining.`);
     }
+
     user.isVerified = true;
     user.otpSecret = undefined;
+    user.otpExpiresAt = undefined;
     await user.save();
+    clearOtpMeta(normalizedPhone);
+
     const tokens = generateTokens(user._id, user.role);
     await RefreshToken.create({ userId: user._id, token: tokens.refreshToken, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) });
     return ok(res, tokens, 'Phone verified successfully');

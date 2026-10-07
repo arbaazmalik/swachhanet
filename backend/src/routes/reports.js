@@ -13,9 +13,11 @@ function resolveWardScope(req, requestedWardId) {
 
   if (req.user.role === 'authority') {
     const ownWardId = req.user.wardId ? String(req.user.wardId) : null;
-    if (!ownWardId) return { wardId: undefined }; // Fallback: show all complaints
+    if (!ownWardId) {
+      return { error: { status: 403, message: 'Authority account is not assigned to any ward.' } };
+    }
     if (requestedWardId && String(requestedWardId) !== ownWardId) {
-      return { error: { status: 403, message: 'Authority users can only access their assigned ward' } };
+      return { error: { status: 403, message: 'Authority users can only access their assigned ward.' } };
     }
     return { wardId: ownWardId };
   }

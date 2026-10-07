@@ -68,6 +68,9 @@ async def predict_trend(request: PredictionRequest):
             forecast_days=request.forecast_days
         )
         return PredictionResponse(forecast=forecast)
+    except ValueError as e:
+        logger.warn(f"Insufficient or invalid trend data: {e}")
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.error(f"Error predicting trends: {e}")
         raise HTTPException(status_code=500, detail=str(e))

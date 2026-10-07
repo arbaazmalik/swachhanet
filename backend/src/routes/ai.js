@@ -96,6 +96,8 @@ function dominantWardId(points = []) {
   return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 }
 
+const { emitHotspotUpdated } = require('../services/socketService');
+
 function resolveWardScope(req, requestedWardId) {
   if (requestedWardId && !mongoose.isValidObjectId(requestedWardId)) {
     return { error: { status: 400, message: 'Invalid ward_id' } };
@@ -106,10 +108,10 @@ function resolveWardScope(req, requestedWardId) {
 
   if (role === 'authority') {
     if (!ownWardId) {
-      return { wardId: undefined }; // Fallback: show all if not assigned
+      return { error: { status: 403, message: 'Authority account is not assigned to any ward.' } };
     }
     if (requestedWardId && String(requestedWardId) !== ownWardId) {
-      return { error: { status: 403, message: 'Authority users can only access their assigned ward' } };
+      return { error: { status: 403, message: 'Authority users can only access their assigned ward.' } };
     }
     return { wardId: ownWardId };
   }
@@ -410,14 +412,22 @@ router.post('/hotspots/refresh', authenticate, authorize('authority', 'admin'), 
       .lean();
 
     const hotspots = hotspotsDocs.map(normalizeHotspotDoc);
+    if (hotspots.length > 0) {
+      hotspots.forEach(h => emitHotspotUpdated(h));
+    }
     return sendSuccess(res, { hotspots, days }, 'Hotspots refreshed');
   } catch (err) {
     return next(err);
   }
 });
 
-router.get('/predictions/ward/:id', authenticate, authorize('authority', 'admin'), (req, res) => {
-  return sendFail(res, 501, 'Ward prediction endpoint is not enabled in AIML v2');
+router.get('/status', authenticate, async (req, res, next) => {
+  try {
+    const readiness = await aiService.checkReadiness();
+    return sendSuccess(res, readiness, 'AI service status');
+  } catch (err) {
+    return next(err);
+  }
 });
 
 router.get('/heatmap', authenticate, async (req, res, next) => {

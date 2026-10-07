@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
@@ -10,6 +10,7 @@ import TrendChart from '../../components/authority/TrendChart'
 import { formatDistanceToNow } from 'date-fns'
 
 const HeatMap = dynamic(() => import('../../components/authority/HeatMap'), { ssr: false })
+const LeafletMap = dynamic(() => import('../../components/shared/LeafletMap'), { ssr: false })
 
 const ISSUE_EMOJI = { full_dustbin:'🗑️', illegal_dumping:'⚠️', burning_waste:'🔥', missed_collection:'🚛', overflowing_bin:'💧', other:'📍' }
 
@@ -23,6 +24,26 @@ const WORKER_STATUS = {
 export default function AuthorityDashboard() {
   const { user } = useAuthStore()
   const [period, setPeriod] = useState('today')
+  const [userLoc, setUserLoc]     = useState(null)
+  const [locating, setLocating]   = useState(false)
+
+  useEffect(() => {
+    // Default to ward centroid if available, then fall back to Pune
+    const defaultLat = user?.wardLat || 18.5204
+    const defaultLng = user?.wardLng || 73.8567
+    setUserLoc({ lat: defaultLat, lng: defaultLng })
+
+    if (!navigator.geolocation) return
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        setLocating(false)
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    )
+  }, [user?.wardLat, user?.wardLng])
 
   const { data: dash, isLoading } = useQuery({
     queryKey: ['authority-dashboard', period, user?.wardId],
@@ -238,6 +259,44 @@ export default function AuthorityDashboard() {
             </div>
           </SectionCard>
         </div>
+
+        {/* ── Current Location Section ── */}
+        <SectionCard
+          title="📍 Your Current Location"
+          subtitle={locating ? 'Acquiring GPS position...' : userLoc ? `${userLoc.lat.toFixed(5)}, ${userLoc.lng.toFixed(5)}` : 'Location unavailable'}
+          action={
+            <button
+              onClick={() => {
+                setLocating(true)
+                navigator.geolocation?.getCurrentPosition(
+                  pos => { setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setLocating(false) },
+                  () => setLocating(false),
+                  { enableHighAccuracy: true, timeout: 8000 }
+                )
+              }}
+              disabled={locating}
+              className="btn-secondary btn-sm flex items-center gap-1"
+            >
+              {locating ? '⏳ Locating...' : '🔄 Refresh'}
+            </button>
+          }
+        >
+          <div className="h-[300px] rounded-b-xl overflow-hidden">
+            {userLoc ? (
+              <LeafletMap
+                center={[userLoc.lat, userLoc.lng]}
+                zoom={14}
+                markers={[]}
+                userLoc={userLoc}
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-slate-400 gap-3">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+                <p className="text-sm">Detecting location…</p>
+              </div>
+            )}
+          </div>
+        </SectionCard>
 
         {/* Urgent complaints table */}
         <SectionCard

@@ -83,6 +83,11 @@ export default function CitizenLayout({ children }) {
 
       {/* Footer */}
       <div className="px-3 py-3 border-t border-green-700/50 space-y-0.5">
+        {['authority', 'admin'].includes(user?.role) && (
+          <Link href="/authority/dashboard" className="nav-item bg-blue-700/60 hover:bg-blue-600 text-white font-medium flex items-center gap-3">
+            <span className="text-lg">🏛️</span><span>Authority Portal</span>
+          </Link>
+        )}
         <Link href="/citizen/notifications"
           className="nav-item nav-item-default flex items-center justify-between"
           onClick={() => setSidebarOpen(false)}

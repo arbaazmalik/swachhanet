@@ -23,24 +23,33 @@ router.get('/centers', authenticate, async (req, res, next) => {
     };
     const keyword = typeMap[type] || 'waste management recycling';
 
-    const gmapsRes = await axios.get('https://maps.googleapis.com/maps/api/place/nearbysearch/json', {
-      params: { location: `${lat},${lng}`, radius, keyword, key: process.env.GMAPS_API_KEY },
-    });
+    if (!process.env.GMAPS_API_KEY || process.env.GMAPS_API_KEY === 'your_google_maps_key') {
+      return ok(res, { centers: [], isLive: false, message: 'Google Places API key is not configured.' }, 'Places API not configured');
+    }
 
-    const centers = (gmapsRes.data.results || []).map(p => ({
-      id:       p.place_id,
-      name:     p.name,
-      lat:      p.geometry.location.lat,
-      lng:      p.geometry.location.lng,
-      address:  p.vicinity,
-      rating:   p.rating,
-      open_now: p.opening_hours?.open_now,
-      types:    p.types,
-    }));
+    try {
+      const gmapsRes = await axios.get('https://maps.googleapis.com/maps/api/place/nearbysearch/json', {
+        params: { location: `${lat},${lng}`, radius, keyword, key: process.env.GMAPS_API_KEY },
+        timeout: 8000,
+      });
 
-    const response = { centers };
-    await setEx(cacheKey, 3600, response);
-    return ok(res, response, 'Centers fetched');
+      const centers = (gmapsRes.data.results || []).map(p => ({
+        id:       p.place_id,
+        name:     p.name,
+        lat:      p.geometry.location.lat,
+        lng:      p.geometry.location.lng,
+        address:  p.vicinity,
+        rating:   p.rating,
+        open_now: p.opening_hours?.open_now,
+        types:    p.types,
+      }));
+
+      const response = { centers, isLive: true };
+      await setEx(cacheKey, 3600, response);
+      return ok(res, response, 'Centers fetched');
+    } catch (apiErr) {
+      return ok(res, { centers: [], isLive: false, message: 'Places service temporarily unavailable' }, 'Places API unavailable');
+    }
   } catch (err) { next(err); }
 });
 

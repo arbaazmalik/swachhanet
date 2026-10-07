@@ -40,16 +40,14 @@ class GeoHotspotService:
             # Use Haversine distance correctly with radians
             coords_rad = self._convert_to_radians(coords_array)
             
-            # For haversine, eps is expected in radians. 
-            # 6371 is Earth's radius in km. We want ~500m (0.5km) -> 0.5 / 6371
-            # But the user config sets eps directly (e.g. 0.005 which could be in degrees if euclidean)
-            # Defaulting to user's config interpretation. Here we'll treat it as approx degrees for simplicity if using euclidean,
-            # or radians if using haversine with standard settings. Let's assume the user config EPS is in standard unit for sklearn.
-            
+            # For haversine, eps is expected in radians: distance_km / 6371.0
+            # A 500m (0.5km) neighborhood radius corresponds to 0.5 / 6371.0 radians (~0.00007848)
+            eps_rad = (0.5 / 6371.0) if self.metric == 'haversine' and self.eps >= 0.001 else self.eps
+
             clustering = DBSCAN(
-                eps=self.eps, 
+                eps=eps_rad if self.metric == 'haversine' else self.eps, 
                 min_samples=self.min_samples, 
-                metric='euclidean' if self.metric != 'haversine' else 'haversine' 
+                metric='haversine' if self.metric == 'haversine' else 'euclidean'
             ).fit(coords_rad if self.metric == 'haversine' else coords_array)
             
             labels = clustering.labels_

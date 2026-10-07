@@ -40,6 +40,13 @@ const SORT_MAP = {
   priority_low: { priority: 1, createdAt: -1 },
 };
 
+const {
+  emitComplaintCreated,
+  emitComplaintStatusChanged,
+  emitComplaintAssigned,
+  emitComplaintUpdated,
+} = require('../services/socketService');
+
 function resolveWardScope(req, requestedWardId) {
   if (requestedWardId && !mongoose.isValidObjectId(requestedWardId)) {
     return { error: { status: 400, message: 'Invalid ward_id' } };
@@ -48,11 +55,10 @@ function resolveWardScope(req, requestedWardId) {
   if (req.user.role === 'authority') {
     const ownWardId = req.user.wardId ? String(req.user.wardId) : null;
     if (!ownWardId) {
-      logger.warn(`Authority user [${req.user._id}] is not assigned to any ward. Showing all complaints.`);
-      return { wardId: undefined }; // Fallback: show all complaints
+      return { error: { status: 403, message: 'Authority account is not assigned to any ward.' } };
     }
     if (requestedWardId && String(requestedWardId) !== ownWardId) {
-      return { error: { status: 403, message: 'Authority users can only access their assigned ward' } };
+      return { error: { status: 403, message: 'Authority users can only access their assigned ward.' } };
     }
     return { wardId: ownWardId };
   }
@@ -137,6 +143,7 @@ router.post('/', authenticate, upload.single('image'), async (req, res, next) =>
       issueType: issue_type,
       priority,
       imageUrl,
+      classificationStatus: imageUrl ? 'pending' : 'completed',
       location:  { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
       address,
       description: description || '',
@@ -151,6 +158,8 @@ router.post('/', authenticate, upload.single('image'), async (req, res, next) =>
     }
     await awardPoints(req.user._id, 'complaint_submitted');
     if (priority >= 3) await notifyAuthorities(complaint);
+    
+    emitComplaintCreated(complaint);
 
     logger.info(`New complaint [${issue_type}] by ${req.user._id}`);
     return ok(res, { complaint }, 'Complaint submitted', 201);
@@ -243,6 +252,7 @@ router.put('/:id/status', authenticate, authorize('authority', 'admin'), async (
       `Your complaint status is now "${status.replace('_', ' ')}".`,
       { complaintId: complaint._id, status }
     );
+    emitComplaintStatusChanged(complaint);
     return ok(res, { complaint }, 'Complaint status updated');
   } catch (err) { next(err); }
 });
@@ -255,11 +265,22 @@ router.post('/:id/assign', authenticate, authorize('authority', 'admin'), async 
     if (!mongoose.isValidObjectId(req.params.id)) return fail(res, 400, 'Invalid complaint id');
     if (!mongoose.isValidObjectId(worker_id)) return fail(res, 400, 'Invalid worker_id');
 
-    const worker = await Worker.findById(worker_id).lean();
+    const worker = await Worker.findById(worker_id);
     if (!worker) return fail(res, 404, 'Worker not found');
-    if (req.user.role === 'authority' && req.user.wardId && String(worker.wardId) !== String(req.user.wardId)) {
+    if (req.user.role === 'authority' && req.user.wardId && worker.wardId && String(worker.wardId) !== String(req.user.wardId)) {
       return fail(res, 403, 'Worker does not belong to your ward');
     }
+
+    // Attach wardId to worker if missing
+    if (req.user.wardId && !worker.wardId) {
+      worker.wardId = req.user.wardId;
+    }
+    worker.status = 'busy';
+    if (!worker.assignedTasks) worker.assignedTasks = [];
+    if (!worker.assignedTasks.includes(req.params.id)) {
+      worker.assignedTasks.push(req.params.id);
+    }
+    await worker.save();
 
     const complaint = await Complaint.findOneAndUpdate(
       req.user.role === 'authority' && req.user.wardId
@@ -284,7 +305,8 @@ router.post('/:id/assign', authenticate, authorize('authority', 'admin'), async 
       'Your complaint has been assigned to a field worker.',
       { complaintId: complaint._id, workerId: worker_id }
     );
-    return ok(res, { complaint }, 'Worker assigned', 201);
+    emitComplaintAssigned(complaint, worker);
+    return ok(res, { complaint, worker }, 'Worker assigned successfully', 201);
   } catch (err) { next(err); }
 });
 

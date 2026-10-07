@@ -17,6 +17,8 @@ function describeMongoTarget(uri) {
   }
 }
 
+let memServer = null;
+
 async function connectDB() {
   const uri = process.env.MONGODB_URI;
 
@@ -26,11 +28,48 @@ async function connectDB() {
 
   logger.info(`Connecting to MongoDB at ${describeMongoTarget(uri)}`);
 
-  await mongoose.connect(uri, {
-    maxPoolSize: 20,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
-  });
+  try {
+    await mongoose.connect(uri, {
+      maxPoolSize: 20,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+  } catch (err) {
+    logger.warn(`Failed to connect to primary MongoDB (${err.message}). Starting in-memory fallback database...`);
+    try {
+      const { MongoMemoryServer } = require('mongodb-memory-server');
+      memServer = await MongoMemoryServer.create();
+      const memUri = memServer.getUri();
+      logger.info(`In-memory MongoDB started at ${memUri}`);
+      await mongoose.connect(memUri);
+
+      // Auto-seed in-memory database
+      try {
+        logger.info('Auto-seeding in-memory database...');
+        const User = require('../models/User');
+        const bcrypt = require('bcryptjs');
+        const count = await User.countDocuments();
+        if (count === 0) {
+          const Ward = require('../models/Ward');
+          const ward = await Ward.create({
+            name: 'Ward 14 - Laxmi Road', ulbCode: 'PMC-14', city: 'Pune', state: 'Maharashtra',
+          });
+          const citizenHash = await bcrypt.hash('citizen123', 10);
+          const authorityHash = await bcrypt.hash('authority123', 10);
+          await User.create([
+            { name: 'Rahul Kumar', phone: '+919876543210', email: 'rahul@example.com', passwordHash: citizenHash, role: 'citizen', wardId: ward._id, isVerified: true },
+            { name: 'Sneha Gupta', phone: '+919876543211', email: 'sneha@pmc.gov.in', passwordHash: authorityHash, role: 'authority', wardId: ward._id, isVerified: true }
+          ]);
+          logger.info('In-memory database seeded with default users (citizen: +919876543210 / citizen123, authority: +919876543211 / authority123)');
+        }
+      } catch (seedErr) {
+        logger.warn('Auto-seed skipped:', seedErr.message);
+      }
+    } catch (memErr) {
+      logger.error('Failed to start in-memory MongoDB fallback:', memErr);
+      throw err;
+    }
+  }
 }
 
 module.exports = { connectDB, mongoose };
