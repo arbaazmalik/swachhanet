@@ -45,22 +45,21 @@ export default function MapPage() {
     if (userLoc) fetchCenters(userLoc.lat, userLoc.lng, filter) 
   }, [userLoc, filter])
 
+  const [isLive, setIsLive] = useState(true)
+
   const fetchCenters = async (lat, lng, type) => {
     setLoading(true)
     try {
       // radius 5km
-      const { data } = await mapAPI.centers(lat, lng, 5000, type)
+      const response = await mapAPI.centers(lat, lng, 5000, type)
+      const data = response?.data || response
       const apiCenters = data?.centers || []
-      
-      if (apiCenters.length > 0) {
-        setCenters(apiCenters)
-      } else {
-        console.log('Using demo dataset (API empty)')
-        setCenters(RECYCLING_CENTERS)
-      }
+      setIsLive(data?.isLive ?? true)
+      setCenters(apiCenters)
     } catch (err) { 
-      console.warn('API Error, falling back to demo data', err)
-      setCenters(RECYCLING_CENTERS)
+      console.warn('Map API Error:', err)
+      setIsLive(false)
+      setCenters([])
     } finally { 
       setLoading(false) 
     }

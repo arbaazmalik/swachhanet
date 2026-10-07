@@ -21,8 +21,8 @@ class PredictionService:
 
     def _prepare_series(self, historical_data: list) -> np.ndarray:
         values = [float(item.get("value", 0.0)) for item in historical_data]
-        if not values:
-            raise ValueError("historical_data cannot be empty")
+        if not values or len(values) < 7:
+            raise ValueError("Not enough historical data for a reliable forecast.")
         return np.array(values, dtype=float)
 
     def _forecast_values(self, series: np.ndarray, days: int) -> list[dict]:

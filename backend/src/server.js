@@ -24,7 +24,11 @@ const notificationRoutes = require('./routes/notifications');
 const wardRoutes         = require('./routes/wards');
 const workforceRoutes    = require('./routes/workforce');
 
+const http = require('http');
+const { initSocket } = require('./services/socketService');
+
 const app  = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
 function validateProductionEnv() {
@@ -67,6 +71,21 @@ app.get('/health', (req, res) => {
   res.json({ success: true, data: payload, message: 'Health check ok' });
 });
 
+app.get('/ready', (req, res) => {
+  const mongoose = require('mongoose');
+  const dbState = mongoose.connection.readyState === 1;
+  const isReady = dbState;
+  const statusCode = isReady ? 200 : 503;
+  res.status(statusCode).json({
+    success: isReady,
+    data: {
+      db: dbState ? 'connected' : 'disconnected',
+      timestamp: new Date().toISOString()
+    },
+    message: isReady ? 'Backend service ready' : 'Backend service not ready'
+  });
+});
+
 const API = '/api/v1';
 app.use(`${API}/auth`,          authRoutes);
 app.use(`${API}/complaints`,    complaintRoutes);
@@ -95,8 +114,9 @@ async function startServer() {
     validateProductionEnv();
     await connectDB();
     await connectRedis();
-    app.listen(PORT, () => {
-      logger.info(`SwachhaNet API running on port ${PORT} [${process.env.NODE_ENV}] — MongoDB`);
+    initSocket(server);
+    server.listen(PORT, () => {
+      logger.info(`SwachhaNet API & WebSocket server running on port ${PORT} [${process.env.NODE_ENV}] — MongoDB`);
     });
   } catch (err) {
     logger.error('Failed to start server:', err);

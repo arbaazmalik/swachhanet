@@ -22,39 +22,35 @@ function deg2rad(deg) {
 /**
  * Finds the best worker for a given complaint based on:
  * 1. Status (must be 'available')
- * 2. Ward (must match)
- * 3. Distance (nearer is better)
- * 4. Load (fewer tasks is better)
+ * 2. Ward (must match complaint ward if set)
+ * 3. Distance (nearer is better via Haversine formula)
+ * 4. Load (fewer assigned tasks is better)
  */
 async function findBestWorker(complaint) {
+  if (!complaint?.location?.coordinates) return null;
   const [lng, lat] = complaint.location.coordinates;
   const wardId = complaint.wardId;
 
-  // Find available workers in the same ward
-  const availableWorkers = await Worker.find({
-    wardId,
-    status: 'available',
-    // Skip workers who are already busy (redundant due to status: 'available')
-  }).lean();
+  const filter = { status: 'available' };
+  if (wardId) filter.wardId = wardId;
 
+  const availableWorkers = await Worker.find(filter).lean();
   if (!availableWorkers.length) return null;
 
-  // Calculate scores for each worker
   const candidates = availableWorkers.map(worker => {
-    const [wLng, wLat] = worker.currentLocation.coordinates;
+    const [wLng, wLat] = worker.currentLocation?.coordinates || [0, 0];
     const distance = calculateDistance(lat, lng, wLat, wLng);
-    
-    // Score formula: (Distance in KM * 10) + (Number of assigned tasks * 5)
-    // Lower score is better
     const currentLoad = (worker.assignedTasks || []).length;
-    const score = (distance * 10) + (currentLoad * 5);
+    
+    // Transparent scoring formula: (Distance in KM * 10) + (Assigned tasks * 5)
+    // Lower score indicates higher assignment priority.
+    const score = Number(((distance * 10) + (currentLoad * 5)).toFixed(2));
+    const reason = `Available worker with low load (${currentLoad} tasks, ${distance.toFixed(2)}km away)`;
 
-    return { ...worker, distance, score };
+    return { ...worker, distance, score, reason };
   });
 
-  // Sort by score ascending
   candidates.sort((a, b) => a.score - b.score);
-
   return candidates[0];
 }
 

@@ -2,24 +2,9 @@ const router = require('express').Router();
 const Worker = require('../models/Worker');
 const { authenticate, authorize } = require('../middleware/auth');
 const { ok, fail } = require('../utils/response');
-const mongoose = require('mongoose');
+const { resolveWardScope } = require('../utils/wardScope');
+const { emitRealtimeEvent } = require('../services/socketService');
 
-function resolveWardScope(req, requestedWardId) {
-  if (requestedWardId && !mongoose.isValidObjectId(requestedWardId)) {
-    return { error: { status: 400, message: 'Invalid ward_id' } };
-  }
-
-  if (req.user.role === 'authority') {
-    const ownWardId = req.user.wardId ? String(req.user.wardId) : null;
-    if (!ownWardId) return { wardId: undefined }; // Fallback: show all if not assigned
-    if (requestedWardId && String(requestedWardId) !== ownWardId) {
-      return { error: { status: 403, message: 'Authority users can only access their assigned ward' } };
-    }
-    return { wardId: ownWardId };
-  }
-
-  return { wardId: requestedWardId || req.user.wardId || undefined };
-}
 
 // GET /workers
 router.get('/', authenticate, authorize('authority', 'admin'), async (req, res, next) => {
@@ -58,6 +43,7 @@ router.put('/:id/status', authenticate, authorize('authority', 'admin', 'worker'
 
     const worker = await Worker.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!worker) return fail(res, 404, 'Worker not found');
+    emitRealtimeEvent({ event: 'worker.status_changed', data: worker, wardId: worker.wardId });
     return ok(res, worker, 'Worker status updated');
   } catch (err) { next(err); }
 });
@@ -65,6 +51,9 @@ router.put('/:id/status', authenticate, authorize('authority', 'admin', 'worker'
 // POST /workers/demo
 router.post('/demo', authenticate, authorize('authority', 'admin'), async (req, res, next) => {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      return fail(res, 403, 'Demo worker creation is disabled in production.');
+    }
     const demoEmployeeId = 'DEMO-WORKER-001';
     const baseFilter = { employeeId: demoEmployeeId };
     const filter = req.user.wardId ? { ...baseFilter, wardId: req.user.wardId } : baseFilter;

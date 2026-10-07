@@ -128,7 +128,6 @@ export const aiAPI = {
   }),
   hotspots: (params) => api.get('/ai/hotspots', { params }),
   refreshHotspots: (wardId, days = 7) => api.post('/ai/hotspots/refresh', { ward_id: wardId, days }),
-  predictions: (wardId) => api.get(`/ai/predictions/ward/${wardId}`),
   heatmap: (params) => api.get('/ai/heatmap', { params }),
 
   predictWaste: (formData) => api.post('/ai/predict-waste', formData, {

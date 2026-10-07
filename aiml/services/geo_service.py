@@ -37,20 +37,25 @@ class GeoHotspotService:
             # Extract coordinates into numpy array
             coords_array = np.array([[point['lat'], point['long']] for point in coordinates_list])
             
-            # Use Haversine distance correctly with radians
-            coords_rad = self._convert_to_radians(coords_array)
-            
-            # For haversine, eps is expected in radians. 
-            # 6371 is Earth's radius in km. We want ~500m (0.5km) -> 0.5 / 6371
-            # But the user config sets eps directly (e.g. 0.005 which could be in degrees if euclidean)
-            # Defaulting to user's config interpretation. Here we'll treat it as approx degrees for simplicity if using euclidean,
-            # or radians if using haversine with standard settings. Let's assume the user config EPS is in standard unit for sklearn.
-            
+            # For haversine metric, sklearn expects coordinates in radians [lat, lon]
+            # and eps in radians (distance in km / Earth's radius 6371.0 km).
+            if self.metric == 'haversine':
+                # Convert eps from degrees (~111km per deg) to radians
+                eps_km = self.eps * 111.0 if self.eps < 0.1 else self.eps
+                eps_rad = eps_km / 6371.0
+                coords_input = self._convert_to_radians(coords_array)
+                metric_to_use = 'haversine'
+                effective_eps = eps_rad
+            else:
+                coords_input = coords_array
+                metric_to_use = 'euclidean'
+                effective_eps = self.eps
+
             clustering = DBSCAN(
-                eps=self.eps, 
+                eps=effective_eps, 
                 min_samples=self.min_samples, 
-                metric='euclidean' if self.metric != 'haversine' else 'haversine' 
-            ).fit(coords_rad if self.metric == 'haversine' else coords_array)
+                metric=metric_to_use
+            ).fit(coords_input)
             
             labels = clustering.labels_
             
