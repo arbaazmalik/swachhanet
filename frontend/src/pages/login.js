@@ -7,17 +7,24 @@ import useAuthStore from '../context/authStore'
 export default function LoginPage() {
   const router  = useRouter()
   const login   = useAuthStore(s => s.login)
-  const [portal, setPortal]   = useState('authority') // Default to authority or citizen, tab selection
+  const [portal, setPortal]   = useState('authority') // Default to authority/citizen/worker tabs
   const [form, setForm]       = useState({ phone: '+919876543211', password: 'authority123' })
   const [loading, setLoading] = useState(false)
 
+  const rolePath = (role) => {
+    if (role === 'authority' || role === 'admin') return '/authority/dashboard'
+    if (role === 'worker') return '/worker/dashboard'
+    return '/citizen/dashboard'
+  }
+
   const handlePortalSwitch = (selectedPortal) => {
     setPortal(selectedPortal)
-    if (selectedPortal === 'authority') {
-      setForm({ phone: '+919876543211', password: 'authority123' })
-    } else {
-      setForm({ phone: '+919876543210', password: 'citizen123' })
+    const creds = {
+      authority: { phone: '+919876543211', password: 'authority123' },
+      citizen:   { phone: '+919876543210', password: 'citizen123' },
+      worker:    { phone: '+919876543300', password: 'worker123' },
     }
+    setForm(creds[selectedPortal])
   }
 
   const handleSubmit = async (e, customPhone, customPass) => {
@@ -28,8 +35,8 @@ export default function LoginPage() {
 
     try {
       const { role } = await login(phoneToUse, passToUse)
-      toast.success(`Welcome back! Logged in as ${role === 'authority' || role === 'admin' ? 'ULB Authority' : 'Citizen'}`)
-      router.push(role === 'authority' || role === 'admin' ? '/authority/dashboard' : '/citizen/dashboard')
+      toast.success(`Welcome back! Logged in as ${role === 'worker' ? 'Field Worker' : role === 'authority' || role === 'admin' ? 'ULB Authority' : 'Citizen'}`)
+      router.push(rolePath(role))
     } catch (err) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Invalid credentials'
       if (err.response?.data?.code === 'UNVERIFIED') {
@@ -111,15 +118,28 @@ export default function LoginPage() {
             >
               👤 Citizen Section
             </button>
+            <button
+              type="button"
+              onClick={() => handlePortalSwitch('worker')}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                portal === 'worker'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              🛠️ Worker Field
+            </button>
           </div>
 
           <h2 className="text-2xl font-bold text-slate-900 mb-1">
-            {portal === 'authority' ? 'Authority Portal Login' : 'Citizen Login'}
+            {portal === 'authority' ? 'Authority Portal Login' : portal === 'worker' ? 'Worker Field Login' : 'Citizen Login'}
           </h2>
           <p className="text-sm text-slate-500 mb-6">
             {portal === 'authority'
               ? 'Access ULB ward oversight, complaints dashboard & workforce'
-              : 'Sign in to report waste and view eco leaderboard'}
+              : portal === 'worker'
+                ? 'Sign in to manage assigned cleanups in the field'
+                : 'Sign in to report waste and view eco leaderboard'}
           </p>
 
           {/* Quick Demo Login Buttons */}
@@ -148,6 +168,16 @@ export default function LoginPage() {
               >
                 👤 Citizen Demo
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handlePortalSwitch('worker')
+                  handleSubmit(null, '+919876543300', 'worker123')
+                }}
+                className="py-2 px-3 bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-800 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-all col-span-2"
+              >
+                🛠️ Worker Field Demo
+              </button>
             </div>
           </div>
 
@@ -166,10 +196,16 @@ export default function LoginPage() {
               type="submit"
               disabled={loading}
               className={`w-full py-2.5 mt-2 rounded-xl text-white font-semibold transition-all shadow-md ${
-                portal === 'authority' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                portal === 'authority' ? 'bg-blue-600 hover:bg-blue-700'
+                  : portal === 'worker' ? 'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-green-600 hover:bg-green-700'
               }`}
             >
-              {loading ? 'Signing in...' : `Sign In to ${portal === 'authority' ? 'Authority Portal' : 'Citizen Section'}`}
+              {loading ? 'Signing in...' : `Sign In to ${
+                portal === 'authority' ? 'Authority Portal'
+                  : portal === 'worker' ? 'Worker Field Dashboard'
+                  : 'Citizen Section'
+              }`}
             </button>
           </form>
 

@@ -34,12 +34,16 @@ export default function App({ Component, pageProps }) {
     }
 
     if (!user || !isAuthenticated) return
-    if (path.startsWith('/authority') && !['authority', 'admin'].includes(user.role)) {
+    if (path.startsWith('/worker') && user.role !== 'worker') {
       router.replace('/citizen/dashboard')
       return
     }
+    if (path.startsWith('/authority') && !['authority', 'admin'].includes(user.role)) {
+      router.replace(user.role === 'worker' ? '/worker/dashboard' : '/citizen/dashboard')
+      return
+    }
     if (path.startsWith('/citizen') && !['citizen'].includes(user.role)) {
-      router.replace('/authority/dashboard')
+      router.replace(user.role === 'worker' ? '/worker/dashboard' : '/authority/dashboard')
     }
   }, [router, router.pathname, user, isAuthenticated])
 

@@ -59,6 +59,7 @@ async function seed() {
   // ── Users ─────────────────────────────────────────────────────────────────
   const citizenHash   = await bcrypt.hash('citizen123', 12);
   const authorityHash = await bcrypt.hash('authority123', 12);
+  const workerHash    = await bcrypt.hash('worker123', 12);
 
   const citizen = await User.create({
     name: 'Rahul Kumar', phone: '+919876543210', email: 'rahul@example.com',
@@ -76,14 +77,21 @@ async function seed() {
     passwordHash: citizenHash, role: 'citizen', wardId: ward._id, isVerified: true,
   });
 
+  // Worker login account — linked to a Worker profile below via userId.
+  const workerUser = await User.create({
+    name: 'Suresh Mane', phone: '+919876543300', email: 'suresh.mane@swachhanet.in',
+    passwordHash: workerHash, role: 'worker', wardId: ward._id, isVerified: true,
+  });
+
   logger.info('Users seeded');
 
   // ── Workers ───────────────────────────────────────────────────────────────
   const workers = await Worker.insertMany([
-    { name: 'Suresh Mane',   phone: '+919876543300', zone: 'Zone A', wardId: ward._id,  status: 'available', currentLocation: { type: 'Point', coordinates: [73.852, 18.521] } },
+    { name: 'Suresh Mane',   phone: '+919876543300', userId: workerUser._id, zone: 'Zone A', wardId: ward._id,  status: 'available', currentLocation: { type: 'Point', coordinates: [73.852, 18.521] } },
     { name: 'Priya Kamble',  phone: '+919876543301', zone: 'Zone B', wardId: ward._id,  status: 'busy',      currentLocation: { type: 'Point', coordinates: [73.858, 18.519] } },
     { name: 'Rajan Desai',   phone: '+919876543302', zone: 'Zone C', wardId: ward2._id, status: 'break',     currentLocation: { type: 'Point', coordinates: [73.862, 18.524] } },
   ]);
+  const suresh = workers[0];
   logger.info('Workers seeded');
 
   // ── Complaints ────────────────────────────────────────────────────────────
@@ -115,6 +123,85 @@ async function seed() {
       },
     }))
   );
+
+  // ── Worker task pipeline (additive demo data) ─────────────────────────────
+  // Give Suresh one completed (with verification), one in-progress and one
+  // fresh assigned complaint so the worker dashboard has real lifecycle data.
+  const assignedComplaint   = complaints.find(c => c.issueType === 'overflowing_bin'); // status 'assigned'
+  const inProgressComplaint = complaints.find(c => c.issueType === 'illegal_dumping'); // status 'in_progress'
+  const completedComplaint  = complaints.find(c => c.issueType === 'missed_collection'); // status 'resolved'
+
+  const daysAgo            = (n) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+  const startLoc           = { type: 'Point', coordinates: [73.8547, 18.5202] };
+  const demoBeforeImage    = '/uploads/evidence/demo-before.jpg';
+  const demoAfterImage     = '/uploads/evidence/demo-after.jpg';
+
+  if (assignedComplaint) {
+    assignedComplaint.assignments.push({
+      workerId: suresh._id,
+      status: 'assigned',
+      assignedAt: daysAgo(0.5),
+      verification: { status: 'pending', method: 'ai_classifier_heuristic', verifiedAt: null },
+    });
+    await assignedComplaint.save();
+    suresh.assignedTasks.push(assignedComplaint._id);
+  }
+
+  if (inProgressComplaint) {
+    inProgressComplaint.assignments.push({
+      workerId: suresh._id,
+      status: 'in_progress',
+      assignedAt: daysAgo(1),
+      startedAt: daysAgo(0.9),
+      activeSince: daysAgo(0.9),
+      startLocation: startLoc,
+      beforeImage: demoBeforeImage,
+      beforeCapturedAt: daysAgo(0.9),
+      afterCapturedAt: null,
+      timerSeconds: 7200,
+      paused: false,
+      verification: { status: 'pending', method: 'ai_classifier_heuristic', verifiedAt: null },
+    });
+    await inProgressComplaint.save();
+    suresh.assignedTasks.push(inProgressComplaint._id);
+  }
+
+  if (completedComplaint) {
+    completedComplaint.assignments.push({
+      workerId: suresh._id,
+      status: 'completed',
+      assignedAt: daysAgo(3),
+      acceptedAt: daysAgo(2.9),
+      startedAt: daysAgo(2.8),
+      completedAt: daysAgo(2.6),
+      startLocation: startLoc,
+      completionLocation: { type: 'Point', coordinates: [73.8545, 18.5202] },
+      beforeImage: demoBeforeImage,
+      afterImage: demoAfterImage,
+      beforeCapturedAt: daysAgo(2.8),
+      afterCapturedAt: daysAgo(2.6),
+      timerSeconds: 4200,
+      paused: false,
+      activeSince: null,
+      verification: {
+        status: 'verified',
+        method: 'ai_classifier_heuristic',
+        cleanupScore: 0.87,
+        beforeClassification: { class: 'plastic', confidence: 0.81 },
+        afterClassification: { class: 'wet', confidence: 0.72 },
+        reason: 'Waste signal reduced between before and after evidence.',
+        verifiedAt: daysAgo(2.6),
+      },
+    });
+    await completedComplaint.save();
+  }
+
+  // Worker counter book-keeping mirrors the complete flow outcomes.
+  suresh.tasksCompleted = 1;
+  suresh.performanceScore = 92;
+  suresh.lastActiveAt = daysAgo(1);
+  await suresh.save();
+
   logger.info('Complaints seeded');
 
   // ── Gamification ──────────────────────────────────────────────────────────
@@ -282,6 +369,7 @@ async function seed() {
   logger.info('Demo credentials:');
   logger.info('  Citizen:   +919876543210 / citizen123');
   logger.info('  Authority: +919876543211 / authority123');
+  logger.info('  Worker:    +919876543300 / worker123');
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   await mongoose.disconnect();

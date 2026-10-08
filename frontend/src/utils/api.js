@@ -179,6 +179,27 @@ export const workforceAPI = {
   updateLocation: (id, lat, lng) => api.patch(`/workforce/${id}/location`, { lat, lng }),
 }
 
+// ── Worker Self-Service (mobile field dashboard) ─────────────────────────────
+export const workerAPI = {
+  me: () => api.get('/workforce/me'),
+  overview: () => api.get('/workforce/overview'),
+  tasks: (status) => api.get('/workforce/tasks', { params: status ? { status } : {} }),
+  task: (id) => api.get(`/workforce/tasks/${id}`),
+  updateStatus: (status) => api.patch('/workforce/status', { status }),
+  updateLocation: (lat, lng) => api.patch('/workforce/location', { lat, lng }),
+  accept: (id) => api.post(`/workforce/tasks/${id}/accept`),
+  start: (id, lat, lng) => api.post(`/workforce/tasks/${id}/start`, { lat, lng }),
+  pause: (id) => api.post(`/workforce/tasks/${id}/pause`),
+  resume: (id) => api.post(`/workforce/tasks/${id}/resume`),
+  evidence: (id, formData) => api.post(`/workforce/tasks/${id}/evidence`, formData),
+  verify: (id) => api.post(`/workforce/tasks/${id}/verify`),
+  complete: (id, lat, lng) => api.post(`/workforce/tasks/${id}/complete`, { lat, lng }),
+  reportIssue: (id, formData) => api.post(`/workforce/tasks/${id}/report-issue`, formData),
+  route: () => api.get('/workforce/route'),
+  performance: () => api.get('/workforce/performance'),
+  history: (params) => api.get('/workforce/history', { params }),
+}
+
 // ── Reports ──────────────────────────────────────────────────────────────────
 export const reportsAPI = {
   dashboard: (params) => api.get('/reports/dashboard', { params }),

@@ -42,7 +42,46 @@ const complaintSchema = new Schema({
     notes:       String,
     assignedAt:  { type: Date, default: Date.now },
     acceptedAt:  Date,
+    startedAt:   Date,
     completedAt: Date,
+
+    // Field-operation evidence (worker dashboard). All fields are optional so
+    // existing assignment documents remain fully valid.
+    startLocation: {
+      type:        { type: String, enum: ['Point'], default: 'Point' },
+      coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
+    },
+    completionLocation: {
+      type:        { type: String, enum: ['Point'], default: 'Point' },
+      coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
+    },
+    beforeImage:       String,
+    afterImage:        String,
+    beforeCapturedAt:  Date,
+    afterCapturedAt:   Date,
+    paused:            { type: Boolean, default: false },
+    pausedAt:          Date,
+    activeSince:       Date,
+    timerSeconds:      { type: Number, default: 0 },
+
+    // Pluggable AI cleanup verification record.
+    verification: {
+      status:     { type: String, enum: ['pending','verified','review_required'], default: 'pending' },
+      method:     { type: String, default: 'none' },
+      cleanupScore: { type: Number, default: 0 },
+      beforeClassification: Schema.Types.Mixed,
+      afterClassification:  Schema.Types.Mixed,
+      reason:     String,
+      verifiedAt: Date,
+    },
+
+    // Worker "report issue" flow — returns task to authority workflow.
+    reportIssue: {
+      reason:     String,
+      notes:      String,
+      imageUrl:   String,
+      reportedAt: Date,
+    },
   }],
 }, { timestamps: true });
 
@@ -52,5 +91,6 @@ complaintSchema.index({ priority: -1 });
 complaintSchema.index({ createdAt: -1 });
 complaintSchema.index({ location: '2dsphere' });
 complaintSchema.index({ userId: 1, createdAt: -1 });
+complaintSchema.index({ 'assignments.workerId': 1, status: 1 });
 
 module.exports = model('Complaint', complaintSchema);

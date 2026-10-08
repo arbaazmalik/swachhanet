@@ -23,6 +23,7 @@ const reportRoutes       = require('./routes/reports');
 const notificationRoutes = require('./routes/notifications');
 const wardRoutes         = require('./routes/wards');
 const workforceRoutes    = require('./routes/workforce');
+const workforceSelfRoutes = require('./routes/workforceSelf');
 
 const http = require('http');
 const { initSocket } = require('./services/socketService');
@@ -101,6 +102,7 @@ app.use(`${API}/reports`,       reportRoutes);
 app.use(`${API}/notifications`, notificationRoutes);
 app.use(`${API}/wards`,         wardRoutes);
 app.use(`${API}/workforce`,     workforceRoutes);
+app.use(`${API}/workforce`,     workforceSelfRoutes);
 
 app.use('*', (req, res) => res.status(404).json({
   success: false,
